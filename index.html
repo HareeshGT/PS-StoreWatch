@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10131c">
+  <title>PS Store Deals — Live Offers</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#"><span class="brand-mark">P</span><span>STORE<span class="brand-accent">WATCH</span></span></a>
+    <div class="top-actions">
+      <label class="region-label" for="region">Store region</label>
+      <select id="region" aria-label="PlayStation Store region">
+        <option value="IN" selected>India</option>
+        <option value="US">United States</option>
+        <option value="GB">United Kingdom</option>
+        <option value="CA">Canada</option>
+        <option value="AU">Australia</option>
+        <option value="DE">Germany</option>
+        <option value="FR">France</option>
+      </select>
+      <button id="refreshBtn" class="refresh-btn"><span aria-hidden="true">↻</span> Refresh</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">PLAYSTATION STORE • DEAL TRACKER</p>
+        <h1>Big games.<br><span>Better prices.</span></h1>
+        <p class="hero-description">Track popular PlayStation games currently on sale. Offers refresh automatically every five minutes.</p>
+        <div class="status-line"><span class="live-dot"></span><span id="statusText">Preparing store search…</span></div>
+      </div>
+      <div class="hero-art" aria-hidden="true"><div class="orb orb-one"></div><div class="orb orb-two"></div><div class="ps-symbol">PS</div><div class="art-caption">DEALS<br>DETECTED</div></div>
+    </section>
+
+    <section class="toolbar">
+      <div>
+        <h2>Popular game offers</h2>
+        <p id="resultMeta">Loading current offers…</p>
+      </div>
+      <div class="filters">
+        <input id="searchInput" type="search" placeholder="Search games…" aria-label="Search games">
+        <select id="sortSelect" aria-label="Sort offers">
+          <option value="discount">Biggest discount</option>
+          <option value="price-low">Price: low to high</option>
+          <option value="price-high">Price: high to low</option>
+          <option value="name">Game name</option>
+        </select>
+      </div>
+    </section>
+
+    <div id="errorBox" class="notice error hidden" role="alert"></div>
+    <div id="loading" class="loading"><span class="spinner"></span> Checking the PlayStation Store…</div>
+    <section id="gamesGrid" class="games-grid" aria-live="polite"></section>
+    <section id="emptyState" class="empty-state hidden">
+      <div class="empty-icon">⌕</div><h3>No matching offers</h3><p>Try another search or refresh the store.</p>
+    </section>
+
+    <section class="fine-print">
+      <strong>About the data</strong>
+      <p>This page queries the public PlayStation Store catalogue endpoint from your browser. Availability, discounts and prices depend on the selected region and can change. If the Store blocks browser requests (CORS or rate limits), run this page through the small local proxy described in the README.</p>
+    </section>
+  </main>
+
+  <footer><span>STOREWATCH</span><span>Unofficial fan-made tracker · Not affiliated with Sony</span></footer>
+  <script src="app.js"></script>
+</body>
+</html>
