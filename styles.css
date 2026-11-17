@@ -10,3 +10,22 @@ main{max-width:1320px;margin:auto;padding:0 clamp(20px,6vw,88px)}.hero{min-heigh
 .loading,.empty-state{text-align:center;padding:65px 20px;color:var(--muted)}.spinner{display:inline-block;width:17px;height:17px;border:2px solid #43516b;border-top-color:#8db1ff;border-radius:50%;vertical-align:middle;margin-right:9px;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.notice{padding:14px 16px;border-radius:10px;margin:12px 0;font-size:13px;line-height:1.6}.error{background:#3a2028;border:1px solid #75404b;color:#ffd5db}.hidden{display:none!important}.empty-icon{font-size:38px}.empty-state h3{color:var(--text);margin-bottom:5px}.fine-print{border-top:1px solid var(--line);margin-top:45px;padding:23px 0 35px;color:var(--muted);font-size:12px;line-height:1.7}.fine-print strong{color:#dbe4f5}footer{border-top:1px solid var(--line);padding:20px clamp(20px,6vw,88px);display:flex;justify-content:space-between;gap:12px;color:#738099;font-size:10px;letter-spacing:1px}footer span:first-child{color:#a8b9db;font-weight:900}
 @media(max-width:900px){.games-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hero-art{width:260px;opacity:.75}.hero h1{font-size:58px}}
 @media(max-width:620px){.topbar{height:auto;min-height:70px;flex-wrap:wrap;padding:14px 18px;gap:12px}.top-actions{width:100%;justify-content:space-between}.region-label{display:none}.top-actions select{flex:1}.hero{min-height:300px}.hero-copy{padding:45px 0}.hero-art{position:absolute;right:-110px;opacity:.25}.hero h1{font-size:53px}.toolbar{align-items:stretch;flex-direction:column}.filters input{flex:1;width:0;min-width:0}.filters select{max-width:48%}.games-grid{grid-template-columns:1fr}.cover-wrap{height:210px}footer{flex-direction:column}}
+/* ---- additions for the deal-hunting filters ---- */
+.live-dot.off{background:#ff7a8a;box-shadow:0 0 12px #ff7a8a}
+.filters select{min-width:190px}
+.panel{background:#10162200;border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:0 0 20px;background:linear-gradient(145deg,#141c2d,#101624)}
+.presets{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:#182136;color:var(--text);border-radius:999px;padding:8px 14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.chip:hover{border-color:var(--blue);background:#1b2842}
+.fields{display:flex;flex-wrap:wrap;gap:14px 18px;align-items:flex-end}
+.field{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)}
+.field em{font-style:normal;color:#c2cce0}
+.field input,.field select{min-width:150px;width:170px}
+.check{display:flex;align-items:center;gap:8px;font-size:13px;color:#c9d3e6;padding-bottom:11px;cursor:pointer}
+.check input{width:16px;height:16px;padding:0;accent-color:#6a9cff}
+.rank-badge{position:absolute;left:12px;bottom:12px;background:#0b0e16cc;border:1px solid #ffffff22;color:#e3ebff;font-size:11px;font-weight:800;padding:6px 8px;border-radius:7px;backdrop-filter:blur(6px)}
+.plus-badge{position:absolute;right:12px;top:12px;background:#ffd84d;color:#2b2300;font-size:11px;font-weight:900;padding:6px 8px;border-radius:7px}
+.price-note .save{color:var(--green);font-weight:800}
+.notice.warn{background:#2f2a18;border:1px solid #6d5f2c;color:#ffeaa6}
+.error a{color:#ffd9a0}
+@media(max-width:620px){.fields{gap:12px}.field,.field input,.field select{width:100%}.filters select{max-width:none;min-width:0}}

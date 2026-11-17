@@ -1,0 +1,12 @@
+# Render Blueprint: deploys StoreWatch as a Node *web service* (not a static site).
+services:
+  - type: web
+    name: ps-storewatch
+    runtime: node
+    plan: free
+    buildCommand: "echo no build step"
+    startCommand: "node server.js"
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#10131c">
-  <title>PS Store Deals — Live Offers</title>
+  <meta name="theme-color" content="#0b0e16">
+  <title>StoreWatch — Big PlayStation games, small prices</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
     <div class="top-actions">
       <label class="region-label" for="region">Store region</label>
       <select id="region" aria-label="PlayStation Store region">
-        <option value="IN" selected>India</option>
+        <option value="IN">India</option>
         <option value="US">United States</option>
         <option value="GB">United Kingdom</option>
         <option value="CA">Canada</option>
@@ -30,38 +30,63 @@
       <div class="hero-copy">
         <p class="eyebrow">PLAYSTATION STORE • DEAL TRACKER</p>
         <h1>Big games.<br><span>Better prices.</span></h1>
-        <p class="hero-description">Track popular PlayStation games currently on sale. Offers refresh automatically every five minutes.</p>
-        <div class="status-line"><span class="live-dot"></span><span id="statusText">Preparing store search…</span></div>
+        <p class="hero-description">Popular, high-priced PlayStation games that have dropped to a low price. Checked against the Store every five minutes while this page is open.</p>
+        <div class="status-line"><span class="live-dot" id="liveDot"></span><span id="statusText">Preparing store search…</span></div>
       </div>
-      <div class="hero-art" aria-hidden="true"><div class="orb orb-one"></div><div class="orb orb-two"></div><div class="ps-symbol">PS</div><div class="art-caption">DEALS<br>DETECTED</div></div>
+      <div class="hero-art" aria-hidden="true"><div class="orb orb-one"></div><div class="orb orb-two"></div><div class="ps-symbol">PS</div><div class="art-caption"><span id="heroCount">0</span><br>DEALS<br>DETECTED</div></div>
     </section>
 
     <section class="toolbar">
       <div>
-        <h2>Popular game offers</h2>
+        <h2>Popular games, now cheaper</h2>
         <p id="resultMeta">Loading current offers…</p>
       </div>
       <div class="filters">
         <input id="searchInput" type="search" placeholder="Search games…" aria-label="Search games">
         <select id="sortSelect" aria-label="Sort offers">
+          <option value="score">Best deal first</option>
           <option value="discount">Biggest discount</option>
-          <option value="price-low">Price: low to high</option>
-          <option value="price-high">Price: high to low</option>
+          <option value="savings">Biggest saving</option>
+          <option value="popular">Most popular</option>
+          <option value="price-low">Sale price: low to high</option>
+          <option value="price-high">Original price: high to low</option>
           <option value="name">Game name</option>
         </select>
       </div>
     </section>
 
+    <section class="panel" aria-label="Deal filters">
+      <div class="presets">
+        <button type="button" class="chip" data-preset="hot">🔥 Hot picks</button>
+        <button type="button" class="chip" data-preset="all">All sales</button>
+      </div>
+      <div class="fields">
+        <label class="field"><span>Original price at least <em id="curLabel1"></em></span>
+          <input id="premiumInput" type="number" min="0" step="any" inputmode="decimal"></label>
+        <label class="field"><span>Sale price at most <em id="curLabel2"></em></span>
+          <input id="maxPriceInput" type="number" min="0" step="any" inputmode="decimal" placeholder="No limit"></label>
+        <label class="field"><span>Discount at least</span>
+          <select id="minDiscount">
+            <option value="1">Any</option><option value="25">25%</option><option value="40">40%</option>
+            <option value="50">50%</option><option value="60">60%</option><option value="75">75%</option>
+          </select></label>
+        <label class="check"><input id="popularOnly" type="checkbox"> Popular games only</label>
+        <label class="check"><input id="includeAddons" type="checkbox"> Include DLC &amp; add-ons</label>
+        <label class="check"><input id="includePlus" type="checkbox"> Include PS Plus-only prices</label>
+      </div>
+    </section>
+
     <div id="errorBox" class="notice error hidden" role="alert"></div>
+    <div id="warnBox" class="notice warn hidden"></div>
     <div id="loading" class="loading"><span class="spinner"></span> Checking the PlayStation Store…</div>
     <section id="gamesGrid" class="games-grid" aria-live="polite"></section>
     <section id="emptyState" class="empty-state hidden">
-      <div class="empty-icon">⌕</div><h3>No matching offers</h3><p>Try another search or refresh the store.</p>
+      <div class="empty-icon">⌕</div><h3>No matching offers</h3><p>Loosen a filter, or try “All sales”.</p>
     </section>
 
     <section class="fine-print">
       <strong>About the data</strong>
-      <p>This page queries the public PlayStation Store catalogue endpoint from your browser. Availability, discounts and prices depend on the selected region and can change. If the Store blocks browser requests (CORS or rate limits), run this page through the small local proxy described in the README.</p>
+      <p>Prices come from the public PlayStation Store website data for the selected region, fetched by this site’s own server (browsers cannot read the Store directly). “Popular” means a game ranks high in the Store’s best-seller order among current deals, or belongs to a well-known franchise. “Best deal” scores deep discounts on high-priced, popular games highest. Prices change quickly, so check the Store page before you buy.</p>
     </section>
   </main>
 

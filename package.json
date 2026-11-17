@@ -1,0 +1,12 @@
+{
+  "name": "ps-storewatch",
+  "version": "2.0.0",
+  "description": "PlayStation Store deal tracker: popular, high-priced games that have dropped to a low price",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "engines": { "node": ">=18" }
+}

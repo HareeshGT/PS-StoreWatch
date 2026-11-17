@@ -1,150 +1,237 @@
 /*
- * StoreWatch
- * Uses the PlayStation Store public catalogue endpoint. This is an unofficial,
- * browser-only integration; Sony may change or restrict this endpoint.
+ * StoreWatch front end.
+ * Data comes from this site's own server (/api/deals); the browser never calls the PlayStation Store.
  */
-const API_BASE = "https://store.playstation.com/store/api/chihiro/00_09_000";
-const POPULAR_SEARCHES = [
-  "Grand Theft Auto", "EA SPORTS FC", "Call of Duty", "God of War",
-  "Marvel's Spider-Man", "Hogwarts Legacy", "The Last of Us",
-  "Red Dead Redemption", "Ghost of Tsushima", "Elden Ring",
-  "Cyberpunk 2077", "Horizon", "Final Fantasy", "Resident Evil",
-  "Mortal Kombat", "Gran Turismo", "Assassin's Creed", "Stellar Blade"
-];
 const $ = (id) => document.getElementById(id);
-const state = { games: [], timer: null, loading: false };
-const region = $("region"), grid = $("gamesGrid"), loading = $("loading");
-const statusText = $("statusText"), resultMeta = $("resultMeta");
+const REFRESH_MS = 5 * 60 * 1000;
+const POPULAR_TOP_RANK = 150; // top N best-sellers among current deals count as "popular"
+const STORE_KEY = 'storewatch.settings.v1';
 
-function money(value, currency) {
-  if (value == null || value === "") return "See Store";
-  const n = Number(value);
-  if (!Number.isFinite(n)) return String(value);
-  try { return new Intl.NumberFormat(undefined, { style:"currency", currency:currency || "INR", maximumFractionDigits:2 }).format(n); }
-  catch { return `${currency || ""} ${n.toFixed(2)}`; }
+const DEFAULTS = {
+  region: 'IN', sort: 'score', query: '',
+  premium: null,        // null = use the region default
+  maxPrice: null, minDiscount: 40,
+  popularOnly: true, includeAddons: false, includePlus: false,
+};
+
+const state = { data: null, timer: null, loading: false, settings: loadSettings() };
+
+function loadSettings() {
+  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(STORE_KEY) || '{}') }; }
+  catch { return { ...DEFAULTS }; }
 }
-function discountPercent(game) {
-  const original = Number(game.price?.basePrice ?? game.price?.originalPrice ?? game.price?.regularPrice);
-  const sale = Number(game.price?.discountedPrice ?? game.price?.salePrice ?? game.price?.finalPrice);
-  if (original > 0 && sale >= 0 && sale < original) return Math.round((1 - sale / original) * 100);
-  const explicit = Number(game.price?.discountPercentage ?? game.price?.discountPercent);
-  return Number.isFinite(explicit) ? explicit : 0;
+function saveSettings() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state.settings)); } catch { /* private mode etc. */ }
 }
-function getPrice(game) {
-  const p = game.price || {};
-  return {
-    sale: p.discountedPrice ?? p.salePrice ?? p.finalPrice ?? p.basePrice,
-    original: p.basePrice ?? p.originalPrice ?? p.regularPrice,
-    currency: p.currencyCode || p.currency || (region.value === "IN" ? "INR" : undefined)
-  };
+
+// ---------------------------------------------------------------- helpers
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
-function normalize(item) {
-  const title = item.name || item.title || item.productName;
-  if (!title) return null;
-  const price = getPrice(item);
-  const pct = discountPercent(item);
-  const sale = Number(price.sale), original = Number(price.original);
-  const isDiscounted = pct > 0 || (Number.isFinite(sale) && Number.isFinite(original) && sale < original);
-  return {
-    id: item.id || item.productId || title,
-    title, image: item.images?.[0]?.url || item.thumbnailUrl || item.coverArtUrl || item.imageUrl || "",
-    url: item.url || item.productUrl || `https://store.playstation.com/${region.value.toLowerCase()}-in/product/${item.id || ""}`,
-    price, pct, isDiscounted, platform: (item.platforms || item.platform || ["PlayStation"]).
-      toString().replaceAll(",", " / ")
-  };
+const safeStoreUrl = (u) => (/^https:\/\/store\.playstation\.com\//.test(u) ? u : '#');
+const safeImageUrl = (u) => (/^https:\/\//.test(u) ? u : '');
+
+function money(value) {
+  const d = state.data;
+  const whole = Math.abs(value - Math.round(value)) < 0.005;
+  try {
+    return new Intl.NumberFormat(d.locale, { style: 'currency', currency: d.currency, minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 }).format(value);
+  } catch { return `${d.currency} ${value.toFixed(2)}`; }
 }
-function productUrl(id) {
-  const locale = {IN:"en-in",US:"en-us",GB:"en-gb",CA:"en-ca",AU:"en-au",DE:"de-de",FR:"fr-fr"}[region.value] || "en-in";
-  return `https://store.playstation.com/${locale}/product/${encodeURIComponent(id)}`;
+
+function premiumThreshold() {
+  const s = state.settings.premium;
+  return s != null && Number.isFinite(s) ? s : (state.data ? state.data.premiumDefault : 0);
 }
-async function searchStore(term) {
-  const url = new URL(`${API_BASE}/${region.value}/999/STORE-MSFXXX-SEARCH`);
-  url.searchParams.set("platform", "ps4,ps5");
-  url.searchParams.set("q", term);
-  url.searchParams.set("size", "30");
-  url.searchParams.set("start", "0");
-  url.searchParams.set("bucket", "games");
-  const response = await fetch(url.toString(), { headers: { "Accept":"application/json" } });
-  if (!response.ok) throw new Error(`PlayStation Store returned HTTP ${response.status}`);
-  const data = await response.json();
-  const items = data.products || data.included || data.data || data.results || [];
-  return items.map(normalize).filter(Boolean);
+
+function isPopular(p) {
+  const d = state.data;
+  return p.franchise || (d.rankSource === 'best-sellers' && p.rank <= POPULAR_TOP_RANK);
 }
-async function refreshOffers() {
+
+// "Best deal" score: deep discount x how premium the original price is + popularity points.
+function dealScore(p) {
+  const prem = premiumThreshold() || 1;
+  const tier = Math.min(Math.max(p.base / prem, 0.5), 2);
+  const rankPts = state.data.rankSource === 'best-sellers' ? Math.max(0, 30 * (1 - (p.rank - 1) / 300)) : 0;
+  return p.pct * tier + rankPts + (p.franchise ? 10 : 0);
+}
+
+// ---------------------------------------------------------------- data
+async function loadDeals(force = false) {
   if (state.loading) return;
   state.loading = true;
-  $("refreshBtn").disabled = true;
-  loading.classList.remove("hidden");
-  $("errorBox").classList.add("hidden");
-  statusText.textContent = "Searching current regional offers…";
+  $('refreshBtn').disabled = true;
+  $('loading').classList.remove('hidden');
+  $('errorBox').classList.add('hidden');
+  $('statusText').textContent = 'Searching current regional offers…';
+  const region = state.settings.region;
   try {
-    // Query several popular franchises and merge duplicate product IDs.
-    const batches = await Promise.allSettled(POPULAR_SEARCHES.map(searchStore));
-    const successful = batches.filter(x => x.status === "fulfilled").flatMap(x => x.value);
-    const failed = batches.filter(x => x.status === "rejected");
-    const unique = new Map();
-    successful.forEach(game => {
-      const key = String(game.id);
-      if (!unique.has(key)) unique.set(key, game);
-    });
-    state.games = [...unique.values()].filter(g => g.isDiscounted);
-    if (!state.games.length && failed.length) {
-      throw new Error(failed[0].reason?.message || "Could not retrieve the Store catalogue.");
+    const res = await fetch(`/api/deals?region=${encodeURIComponent(region)}${force ? '&refresh=1' : ''}`, { headers: { Accept: 'application/json' } });
+    let body = null;
+    try { body = await res.json(); } catch { /* handled below */ }
+    if (!res.ok || !body || !Array.isArray(body.products)) {
+      const err = new Error((body && body.error) || `Server returned HTTP ${res.status}`);
+      err.failures = (body && body.failures) || [];
+      throw err;
     }
-    state.games.forEach(g => { if (!g.url || g.url.endsWith("/")) g.url = productUrl(g.id); });
+    state.data = body;
+    $('liveDot').classList.remove('off');
     render();
-    const now = new Date();
-    statusText.textContent = `Updated ${now.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})} · next check in 5 minutes`;
-    resultMeta.textContent = `${state.games.length} discounted games found · ${region.options[region.selectedIndex].text} Store`;
-    if (failed.length) showError(`${failed.length} of ${POPULAR_SEARCHES.length} searches could not be completed. Results may be incomplete.`);
-  } catch (error) {
-    showError(`${error.message}. The Store may block direct browser requests (CORS), or its catalogue API may have changed. See README for the proxy option.`);
-    statusText.textContent = "Could not refresh store data";
-    if (!state.games.length) resultMeta.textContent = "No live results available";
+    const t = new Date(body.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const src = body.source === 'graphql' ? 'Store best-sellers' : 'Store category page';
+    $('statusText').textContent = `Updated ${t} · ${src} · next check in 5 minutes`;
+    showWarnings(body);
+  } catch (err) {
+    showError(err);
+    $('liveDot').classList.add('off');
+    $('statusText').textContent = state.data ? 'Could not refresh store data (showing earlier results)' : 'Could not refresh store data';
+    if (!state.data) $('resultMeta').textContent = 'No live results available';
   } finally {
     state.loading = false;
-    $("refreshBtn").disabled = false;
-    loading.classList.add("hidden");
+    $('refreshBtn').disabled = false;
+    $('loading').classList.add('hidden');
   }
 }
-function showError(message) {
-  $("errorBox").textContent = message;
-  $("errorBox").classList.remove("hidden");
+
+function showError(err) {
+  const box = $('errorBox');
+  const steps = (err.failures || []).map((f) => `${f.step}: ${f.message}`).join(' · ');
+  box.innerHTML = `<strong>Could not load deals.</strong> ${escapeHtml(err.message)}${steps ? `<br><small>${escapeHtml(steps)}</small>` : ''}` +
+    `<br><small><a href="/api/diagnose?region=${encodeURIComponent(state.settings.region)}" target="_blank" rel="noopener">Run the diagnostic</a> to see which step is failing.</small>`;
+  box.classList.remove('hidden');
 }
-function render() {
-  const query = $("searchInput").value.trim().toLowerCase();
-  const sort = $("sortSelect").value;
-  let list = state.games.filter(g => g.title.toLowerCase().includes(query));
-  list.sort((a,b) => {
-    if (sort === "price-low") return Number(a.price.sale)-Number(b.price.sale);
-    if (sort === "price-high") return Number(b.price.sale)-Number(a.price.sale);
-    if (sort === "name") return a.title.localeCompare(b.title);
-    return b.pct-a.pct;
+
+function showWarnings(data) {
+  const box = $('warnBox');
+  const lines = [];
+  if (data.stale) lines.push('Showing the last successful update; the latest refresh failed.');
+  else if (data.source === 'ssr') lines.push('Best-seller ranking is unavailable right now, so “popular” uses well-known franchises only.');
+  if (!lines.length) { box.classList.add('hidden'); return; }
+  box.textContent = lines.join(' ');
+  box.classList.remove('hidden');
+}
+
+// ---------------------------------------------------------------- filtering + rendering
+function visibleList() {
+  const s = state.settings;
+  const prem = premiumThreshold();
+  const q = s.query.trim().toLowerCase();
+  const list = state.data.products.filter((p) => {
+    if (!s.includeAddons && p.kind !== 'game') return false;
+    if (!s.includePlus && p.plusOnly) return false;
+    if (p.base < prem) return false;
+    if (p.pct < s.minDiscount) return false;
+    if (s.maxPrice != null && p.sale > s.maxPrice) return false;
+    if (s.popularOnly && !isPopular(p)) return false;
+    if (q && !p.title.toLowerCase().includes(q)) return false;
+    return true;
   });
-  grid.innerHTML = list.map(g => {
-    const p = g.price;
-    const sale = money(p.sale,p.currency), original = money(p.original,p.currency);
-    const image = g.image ? `<img class="cover" src="${escapeHtml(g.image)}" alt="" loading="lazy" onerror="this.style.display='none'">` : `<div class="cover-fallback">🎮</div>`;
+  const scored = new Map(list.map((p) => [p.id, dealScore(p)]));
+  list.sort((a, b) => {
+    switch (s.sort) {
+      case 'discount': return b.pct - a.pct || b.base - a.base;
+      case 'savings': return (b.base - b.sale) - (a.base - a.sale);
+      case 'popular': return a.rank - b.rank;
+      case 'price-low': return a.sale - b.sale;
+      case 'price-high': return b.base - a.base;
+      case 'name': return a.title.localeCompare(b.title);
+      default: return scored.get(b.id) - scored.get(a.id);
+    }
+  });
+  return { list, scored };
+}
+
+function render() {
+  const d = state.data;
+  if (!d) return;
+  syncControls();
+  const { list, scored } = visibleList();
+  $('heroCount').textContent = String(d.total);
+  $('resultMeta').textContent = `${list.length} matching of ${d.total} discounted items · ${d.regionName} Store`;
+
+  $('gamesGrid').innerHTML = list.map((p) => {
+    const img = safeImageUrl(p.image);
+    const cover = img
+      ? `<img class="cover" src="${escapeHtml(img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">`
+      : '<div class="cover-fallback">🎮</div>';
+    const rank = d.rankSource === 'best-sellers' && p.rank <= 300 ? `<span class="rank-badge">#${p.rank} best seller</span>` : '';
+    const fran = !rank && p.franchise ? '<span class="rank-badge">Popular franchise</span>' : '';
+    const plus = p.plusOnly ? '<span class="plus-badge">PS Plus price</span>' : '';
     return `<article class="game-card">
-      <div class="cover-wrap">${image}${g.pct > 0 ? `<span class="discount">-${g.pct}%</span>` : ""}</div>
-      <div class="card-body"><h3 class="game-title">${escapeHtml(g.title)}</h3>
-        <div class="price-row"><span class="sale-price">${escapeHtml(sale)}</span>${p.original && String(p.original)!==String(p.sale) ? `<span class="original-price">${escapeHtml(original)}</span>` : ""}</div>
-        <div class="price-note">${g.pct > 0 ? `${g.pct}% off · Regional pricing` : "Sale price shown in Store"}</div>
-        <div class="card-bottom"><span class="platform">${escapeHtml(g.platform || "PLAYSTATION")}</span><a class="store-link" href="${escapeHtml(g.url)}" target="_blank" rel="noopener noreferrer">View in Store ↗</a></div>
+      <div class="cover-wrap">${cover}<span class="discount">-${p.pct}%</span>${rank || fran}${plus}</div>
+      <div class="card-body"><h3 class="game-title">${escapeHtml(p.title)}</h3>
+        <div class="price-row"><span class="sale-price">${escapeHtml(p.saleText)}</span><span class="original-price">${escapeHtml(p.baseText)}</span></div>
+        <div class="price-note"><strong class="save">You save ${escapeHtml(money(p.base - p.sale))}</strong> · deal score ${Math.round(scored.get(p.id))}</div>
+        <div class="card-bottom"><span class="platform">${escapeHtml(p.platforms.join(' / ') || 'PLAYSTATION')}</span><a class="store-link" href="${escapeHtml(safeStoreUrl(p.url))}" target="_blank" rel="noopener noreferrer">View in Store ↗</a></div>
       </div></article>`;
-  }).join("");
-  $("emptyState").classList.toggle("hidden", list.length !== 0);
+  }).join('');
+  $('emptyState').classList.toggle('hidden', list.length !== 0);
 }
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+// ---------------------------------------------------------------- controls
+function syncControls() {
+  const s = state.settings, d = state.data;
+  $('region').value = s.region;
+  $('sortSelect').value = s.sort;
+  if (document.activeElement !== $('searchInput')) $('searchInput').value = s.query;
+  if (d) {
+    if (document.activeElement !== $('premiumInput')) $('premiumInput').value = String(premiumThreshold());
+    $('curLabel1').textContent = `(${d.currency})`;
+    $('curLabel2').textContent = `(${d.currency})`;
+  }
+  if (document.activeElement !== $('maxPriceInput')) $('maxPriceInput').value = s.maxPrice == null ? '' : String(s.maxPrice);
+  $('minDiscount').value = String(s.minDiscount);
+  $('popularOnly').checked = s.popularOnly;
+  $('includeAddons').checked = s.includeAddons;
+  $('includePlus').checked = s.includePlus;
 }
-function scheduleRefresh() {
+
+function update(patch) {
+  Object.assign(state.settings, patch);
+  saveSettings();
+  render();
+}
+
+function numberOrNull(v) {
+  if (v === '' || v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+$('refreshBtn').addEventListener('click', () => loadDeals(true));
+$('region').addEventListener('change', (e) => {
+  state.settings.region = e.target.value;
+  state.settings.premium = null; // price scales differ per region, go back to that region's default
+  state.settings.maxPrice = null;
+  saveSettings();
+  state.data = null;
+  $('gamesGrid').innerHTML = '';
+  loadDeals();
+});
+$('searchInput').addEventListener('input', (e) => update({ query: e.target.value }));
+$('sortSelect').addEventListener('change', (e) => update({ sort: e.target.value }));
+$('premiumInput').addEventListener('input', (e) => update({ premium: numberOrNull(e.target.value) }));
+$('maxPriceInput').addEventListener('input', (e) => update({ maxPrice: numberOrNull(e.target.value) }));
+$('minDiscount').addEventListener('change', (e) => update({ minDiscount: Number(e.target.value) }));
+$('popularOnly').addEventListener('change', (e) => update({ popularOnly: e.target.checked }));
+$('includeAddons').addEventListener('change', (e) => update({ includeAddons: e.target.checked }));
+$('includePlus').addEventListener('change', (e) => update({ includePlus: e.target.checked }));
+document.querySelectorAll('[data-preset]').forEach((btn) => btn.addEventListener('click', () => {
+  if (btn.dataset.preset === 'hot') update({ popularOnly: true, minDiscount: 50, premium: null, maxPrice: null, includeAddons: false, includePlus: false, sort: 'score' });
+  else update({ popularOnly: false, minDiscount: 1, premium: 0, maxPrice: null, sort: 'discount' });
+}));
+
+// refresh on a timer, but only while the tab is visible
+function schedule() {
   clearInterval(state.timer);
-  state.timer = setInterval(refreshOffers, 5 * 60 * 1000);
+  state.timer = setInterval(() => { if (!document.hidden) loadDeals(); }, REFRESH_MS);
 }
-$("refreshBtn").addEventListener("click", refreshOffers);
-region.addEventListener("change", refreshOffers);
-$("searchInput").addEventListener("input", render);
-$("sortSelect").addEventListener("change", render);
-refreshOffers();
-scheduleRefresh();
+document.addEventListener('visibilitychange', () => {
+  const age = state.data ? Date.now() - new Date(state.data.fetchedAt).getTime() : Infinity;
+  if (!document.hidden && age > REFRESH_MS) loadDeals();
+});
+
+syncControls();
+loadDeals();
+schedule();
